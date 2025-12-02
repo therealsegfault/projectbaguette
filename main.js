@@ -35,7 +35,7 @@ const LANES = [
 // ===== TIMING =====
 const BPM = 120;
 const BEAT = 60 / BPM;
-const APPROACH_TIME = 2.0 + (180 / BPM);
+const APPROACH_TIME = 1.4 + (240 / BPM);
 
 const HIT_WINDOW_PERFECT = 0.08;
 const HIT_WINDOW_GOOD = 0.18;
