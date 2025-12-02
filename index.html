@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Baguette</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+      font-family: Arial, sans-serif;
+    }
+
+    /* Music video in the background */
+    #mv {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      filter: brightness(0.4) blur(2px); /* “stage lights” feel */
+    }
+
+    /* Game canvas on top */
+    #game {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- MV: replace src with your video file later -->
+  <video id="mv" src="/assets/defaults/mv-default.mp4" autoplay muted loop playsinline></video>
+
+  <!-- Game rendering surface -->
+  <canvas id="game"></canvas>
+
+  <script src="main.js"></script>
+</body>
+</html>
