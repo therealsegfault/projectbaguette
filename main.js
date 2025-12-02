@@ -1,5 +1,4 @@
 // -------------------- CONFIG ----------------------
-// Created by Mira Studios and ChatGPT <3
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -8,7 +7,6 @@ let height = window.innerHeight;
 canvas.width = width;
 canvas.height = height;
 
-// 4 lanes: W, A, S, D
 const LANES = [
   { key: "w", name: "Drums",  color: "#ff5555", dirChar: "↑" },
   { key: "a", name: "Bass",   color: "#55ff55", dirChar: "←" },
@@ -16,12 +14,14 @@ const LANES = [
   { key: "d", name: "Keys",   color: "#5555ff", dirChar: "→" },
 ];
 
-// time for a note to travel from spawn → target
-const APPROACH_TIME = 2.0;
-const HIT_WINDOW_PERFECT = 0.05; // 50 ms
-const HIT_WINDOW_GOOD    = 0.12; // 120 ms
+// Make notes move a bit slower so it’s easier to see
+const APPROACH_TIME = 2.5;
 
-// target/spawn positions per lane (computed from screen size)
+// Timing windows
+const HIT_WINDOW_PERFECT = 0.06; // 60 ms
+const HIT_WINDOW_GOOD    = 0.14; // 140 ms
+
+// Layout positions
 let TARGETS = [];
 let SPAWNS = [];
 
@@ -35,7 +35,6 @@ function updateLayout() {
   const cy = height / 2;
   const radius = Math.min(width, height) * 0.25;
 
-  // targets arranged around the center like Project Diva
   TARGETS = [
     { x: cx,        y: cy - radius }, // Up (W)
     { x: cx - radius, y: cy },        // Left (A)
@@ -43,27 +42,23 @@ function updateLayout() {
     { x: cx + radius, y: cy },        // Right (D)
   ];
 
-  // spawns a bit further out in the same direction
-  const spawnOffset = radius * 1.2;
+  const spawnOffset = radius * 1.5;
   SPAWNS = [
-    { x: cx,        y: cy - radius - spawnOffset }, // from above
-    { x: cx - radius - spawnOffset, y: cy },        // from left
-    { x: cx,        y: cy + radius + spawnOffset }, // from below
-    { x: cx + radius + spawnOffset, y: cy },        // from right
+    { x: cx,        y: cy - radius - spawnOffset },
+    { x: cx - radius - spawnOffset, y: cy },
+    { x: cx,        y: cy + radius + spawnOffset },
+    { x: cx + radius + spawnOffset, y: cy },
   ];
 }
 
 window.addEventListener("resize", updateLayout);
 updateLayout();
 
-// For now we fake song timing with a clock.
-// Later: tie to Web Audio.
-let startTime = 0;
-let running = false;
+// Simple internal clock for now
+let startTime = performance.now() / 1000;
+let running = true;
 
-// -------------------- DATA ------------------------
-// Example notes: time in seconds, lane index 0-3
-// Replace this with your real chart later.
+// Example notes – you can tweak these times
 let notes = [
   { time: 1.0, lane: 0, hit: false, judged: false },
   { time: 1.5, lane: 1, hit: false, judged: false },
@@ -71,6 +66,8 @@ let notes = [
   { time: 2.5, lane: 3, hit: false, judged: false },
   { time: 3.0, lane: 0, hit: false, judged: false },
   { time: 3.5, lane: 1, hit: false, judged: false },
+  { time: 4.0, lane: 2, hit: false, judged: false },
+  { time: 4.5, lane: 3, hit: false, judged: false },
 ];
 
 let score = 0;
@@ -78,14 +75,12 @@ let combo = 0;
 let lastHitText = "";
 let lastHitTime = 0;
 
-// -------------------- INIT ------------------------
-function init() {
-  startTime = performance.now() / 1000;
-  running = true;
-  requestAnimationFrame(loop);
-}
+// For visual feedback when you press a key
+let lanePulse = [0, 0, 0, 0]; // seconds since last press per lane
 
-init();
+// Debug info
+let lastFrameTime = performance.now();
+let fps = 0;
 
 // -------------------- TIMING ----------------------
 function getSongTime() {
@@ -112,8 +107,9 @@ function handleKeyPress(key) {
   const laneIndex = LANES.findIndex(l => l.key === key);
   if (laneIndex === -1) return;
 
+  lanePulse[laneIndex] = 0; // reset pulse timer
+
   const songTime = getSongTime();
-  // find closest unjudged note in that lane
   let bestNote = null;
   let bestDiff = Infinity;
 
@@ -133,8 +129,8 @@ function handleKeyPress(key) {
   } else if (bestDiff <= HIT_WINDOW_GOOD) {
     registerHit(bestNote, "GOOD", 100);
   } else {
-    // optional: strict miss if you want PD-style harshness
-    // registerMiss(bestNote);
+    // too early / late
+    // registerMiss(bestNote); // uncomment if you want strictness
   }
 }
 
@@ -160,9 +156,19 @@ function registerMiss(note) {
 // -------------------- GAME LOOP -------------------
 function loop() {
   if (!running) return;
+  const now = performance.now();
+  const deltaMs = now - lastFrameTime;
+  lastFrameTime = now;
+  fps = 1000 / deltaMs;
+
   const songTime = getSongTime();
 
-  // auto-judge misses after passing hit window
+  // update lane pulses (for target flashes)
+  for (let i = 0; i < lanePulse.length; i++) {
+    lanePulse[i] += deltaMs / 1000;
+  }
+
+  // auto-judge misses
   for (const note of notes) {
     if (!note.judged && songTime > note.time + HIT_WINDOW_GOOD) {
       registerMiss(note);
@@ -173,6 +179,8 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+requestAnimationFrame(loop);
+
 // -------------------- RENDERING -------------------
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -181,7 +189,7 @@ function lerp(a, b, t) {
 function draw(songTime) {
   ctx.clearRect(0, 0, width, height);
 
-  // slight vignette / background
+  // background
   const grd = ctx.createRadialGradient(
     width / 2, height / 2, Math.min(width, height) * 0.1,
     width / 2, height / 2, Math.min(width, height) * 0.7
@@ -191,27 +199,32 @@ function draw(songTime) {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, width, height);
 
-  // Draw targets (fixed PD-style buttons)
   const targetRadius = Math.min(width, height) * 0.06;
 
+  // draw targets
   for (let i = 0; i < LANES.length; i++) {
     const lane = LANES[i];
     const tpos = TARGETS[i];
+
+    // pulse when pressed
+    const pulseAge = lanePulse[i];
+    const pulseFactor = Math.max(0, 1.0 - pulseAge * 4); // fades in ~0.25s
+    const outerR = targetRadius * (1 + 0.25 * pulseFactor);
 
     // outer ring
     ctx.lineWidth = 4;
     ctx.strokeStyle = lane.color;
     ctx.beginPath();
-    ctx.arc(tpos.x, tpos.y, targetRadius, 0, Math.PI * 2);
+    ctx.arc(tpos.x, tpos.y, outerR, 0, Math.PI * 2);
     ctx.stroke();
 
-    // inner fill
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    // inner circle
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
     ctx.beginPath();
     ctx.arc(tpos.x, tpos.y, targetRadius * 0.7, 0, Math.PI * 2);
     ctx.fill();
 
-    // direction / WASD label
+    // direction symbol
     ctx.fillStyle = lane.color;
     ctx.font = `${Math.floor(targetRadius * 0.7)}px Arial`;
     ctx.textAlign = "center";
@@ -219,14 +232,14 @@ function draw(songTime) {
     ctx.fillText(lane.dirChar, tpos.x, tpos.y);
   }
 
-  // Draw flying notes
+  // draw notes
   const noteRadius = targetRadius * 0.6;
 
   for (const note of notes) {
     const dt = note.time - songTime; // seconds until hit
-    const t = 1 - dt / APPROACH_TIME; // 0 (spawn) → 1 (at target)
+    const t = 1 - dt / APPROACH_TIME; // 0 (spawn) → 1 (target)
 
-    if (t < 0 || t > 1.5) continue; // not visible yet or far past
+    if (t < 0 || t > 1.5) continue;
 
     const laneIndex = note.lane;
     const spawn = SPAWNS[laneIndex];
@@ -235,10 +248,9 @@ function draw(songTime) {
     const x = lerp(spawn.x, target.x, t);
     const y = lerp(spawn.y, target.y, t);
 
-    // fade after hit/miss
     let alpha = 1.0;
     if (note.judged && !note.hit) alpha = 0.2;
-    if (note.hit) alpha = 0.5; // after you hit it, it fades
+    if (note.hit) alpha = 0.5;
 
     ctx.globalAlpha = alpha;
     ctx.fillStyle = LANES[laneIndex].color;
@@ -246,7 +258,6 @@ function draw(songTime) {
     ctx.arc(x, y, noteRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // small icon inside
     ctx.fillStyle = "#000";
     ctx.font = `${Math.floor(noteRadius)}px Arial`;
     ctx.textAlign = "center";
@@ -257,13 +268,13 @@ function draw(songTime) {
 
   // HUD: score + combo
   ctx.fillStyle = "#fff";
-  ctx.font = "20px Arial";
+  ctx.font = "18px Arial";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillText("Score: " + score, 20, 30);
-  ctx.fillText("Combo: " + combo, 20, 60);
+  ctx.fillText("Combo: " + combo, 20, 55);
 
-  // last hit feedback in center
+  // last hit feedback
   const timeSinceHit = songTime - lastHitTime;
   if (timeSinceHit < 0.5 && lastHitText) {
     ctx.fillStyle = "#fff";
@@ -271,5 +282,26 @@ function draw(songTime) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(lastHitText, width / 2, height * 0.2);
+  }
+
+  // DEBUG OVERLAY (top-right)
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(width - 180, 10, 170, 70);
+
+  ctx.fillStyle = "#0f0";
+  ctx.font = "14px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  ctx.fillText(`FPS: ${fps.toFixed(1)}`, width - 170, 18);
+  ctx.fillText(`Time: ${songTime.toFixed(3)}s`, width - 170, 36);
+
+  // show diff to next note
+  const nextNote = notes.find(n => !n.judged);
+  if (nextNote) {
+    const diff = nextNote.time - songTime;
+    ctx.fillText(`NextΔ: ${diff.toFixed(3)}s`, width - 170, 54);
+  } else {
+    ctx.fillText("NextΔ: ---", width - 170, 54);
   }
 }
