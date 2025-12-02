@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rhythm Game Prototype</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background: #000;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #111;
+    }
+
+    /* optional: full-size start overlay for future audio unlock */
+    #start-screen {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+      z-index: 10;
+      visibility: hidden; /* set visible once you add audio */
+    }
+
+    #start-screen button {
+      padding: 12px 24px;
+      font-size: 18px;
+      border: none;
+      cursor: pointer;
+      background: #fff;
+      color: #000;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Canvas where the game runs -->
+  <canvas id="game"></canvas>
+
+  <!-- Optional start screen (hidden until needed for audio) -->
+  <div id="start-screen">
+    <div>Click to Start</div>
+    <button id="start-btn">Start</button>
+  </div>
+
+  <!-- Load your JS -->
+  <script src="main.js"></script>
+
+</body>
+</html>
