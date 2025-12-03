@@ -587,22 +587,46 @@ function loop() {
 // TAP TO START → UNLOCK AUDIO → LOAD CHART → START GAME
 ////////////////////////////////////////////////////////////
 startOverlay.addEventListener("click", async () => {
-  startOverlay.style.opacity = "0";
+
+  // Fade overlay
   startOverlay.style.transition = "opacity 0.4s ease";
-  setTimeout(() => startOverlay.remove(), 500);
+  startOverlay.style.opacity = "0";
+  setTimeout(() => startOverlay.remove(), 450);
 
-  // Unlock audio context
+  // ---- FIX 1: Create a SINGLE audio context here ----
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  audioCtx = new AudioContext();
-  if (audioCtx.state === "suspended") await audioCtx.resume();
 
-  await prepareAutoChart();
+  if (!audioCtx) audioCtx = new AudioContext();
 
-  // Begin audio once ready
-  audio.play().then(() => {
-    // fade-in MV only after audio actually starts
-    mv.style.opacity = "1";
-  });
+  // Force resume (iOS needs double-tap sometimes without this)
+  if (audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch(e) {}
+  }
 
+  // ---- FIX 2: Prepare chart BEFORE playing ----
+  try {
+    await prepareAutoChart(); // must be awaited
+  } catch (e) {
+    console.warn("Auto-chart failed early:", e);
+  }
+
+  // ---- FIX 3: Start audio *after* charting ----
+  try {
+    await audio.play();
+  } catch (e) {
+    console.warn("audio.play() blocked, retrying...", e);
+    // Retry once (iOS will allow second attempt after resume)
+    try { 
+      await audio.play();
+    } catch(e2) {
+      alert("Tap again — Safari blocked audio.");
+      return;
+    }
+  }
+
+  // MV fade-in only AFTER playback is confirmed
+  mv.style.opacity = "1";
+
+  // ---- FIX 4: Guaranteed start of game loop ----
   requestAnimationFrame(loop);
 });
