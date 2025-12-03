@@ -1,60 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Project Baguette</title>
+<meta charset="UTF-8">
+<title>Project Baguette</title>
 
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      background: transparent;
-      user-select: none;
-      font-family: Arial, sans-serif;
-    }
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: black;
+    touch-action: manipulation;
+  }
 
-    /* Music video in the background */
-    #mv {
-  position: fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  pointer-events:none;
-  opacity:0;
-}
+  /* START SCREEN */
+  #startScreen {
+    position: fixed;
+    inset: 0;
+    background: black;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  }
 
-    /* Game canvas on top */
-    #game {
-      position: relative;
-      z-index: 1;
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background: transparent;
-    }
-  </style>
+  #logo {
+    font-size: 3rem;
+    margin-bottom: 20px;
+  }
+
+  #tapToStart {
+    opacity: 0.7;
+    font-size: 1.5rem;
+  }
+
+  /* MV stays hidden until JS reveals it */
+  #mv {
+    position: fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    pointer-events:none;
+
+    display:none;      /* prevents iOS white-screen frame */
+    opacity:0;
+    transition: opacity 1s ease;
+  }
+
+  #game {
+    position: relative;
+    z-index: 1;
+  }
+</style>
 </head>
+
 <body>
 
-  <!-- MV: replace src with your video file later -->
-  <video id="mv" src="assets/defaults/mv-default.mp4" autoplay muted loop playsinline></video>
+  <!-- START SCREEN -->
+  <div id="startScreen">
+    <h1 id="logo">Project Baguette</h1>
+    <p id="tapToStart">Tap to Start</p>
+  </div>
 
-  <!-- Game rendering surface -->
+  <!-- MV background -->
+  <video id="mv"
+         src="assets/defaults/mv-default.mp4"
+         muted
+         playsinline>
+  </video>
+
+  <!-- Audio -->
+  <audio id="song"
+         src="assets/defaults/song-demo.mp3"
+         preload="none"></audio>
+
   <canvas id="game"></canvas>
 
-  <script src="main.js?v=2"></script>
+  <script src="main.js"></script>
 
-  <audio
-  id="song"
-  src="assets/defaults/song-demo.mp3"
-  preload="auto"
-  controls
-></audio>
 </body>
 </html>
