@@ -380,9 +380,6 @@ function drawHitburst(note, age, baseR) {
 }
 
 // ========= DRAW LOOP =========
-let fps = 0;
-let lastFrame = performance.now();
-
 function draw(songTime) {
   if (width === 0 || height === 0) return;
 
@@ -392,17 +389,17 @@ function draw(songTime) {
   const beatPhase = (songTime % BEAT) / BEAT;
   beatPulse = 0.5 + 0.5 * Math.sin(beatPhase * Math.PI * 2);
 
-  // Enforce at most 4 active notes (sorted)
+  // Enforce at most 4 active notes
   const activeSorted = notes
     .filter(n => !n.judged)
     .sort((a, b) => a.time - b.time);
 
   if (activeSorted.length > 4) {
-    const cut = activeSorted.length - 4;
-    const oldest = activeSorted.slice(0, cut);
-    for (const n of oldest) registerMiss(n);
+    const excess = activeSorted.length - 4;
+    for (let i = 0; i < excess; i++) registerMiss(activeSorted[i]);
   }
 
+  // semi-transparent black overlay
   ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
   ctx.fillRect(0, 0, width, height);
 
@@ -416,10 +413,10 @@ function draw(songTime) {
   // notes
   for (const n of notes) {
     const lane = LANES[n.lane];
-    const songT = songTime;
+    const tNow = songTime;
 
     if (!n.judged) {
-      const dt = n.time - songT;
+      const dt = n.time - tNow;
       const t = 1 - dt / smoothedApproach;
       if (t < 0 || t > 1.5) continue;
 
@@ -430,11 +427,11 @@ function draw(songTime) {
       drawButtonNote(x, y, baseR, lane);
 
     } else if (n.effect === "hit") {
-      const age = songT - n.effectTime;
+      const age = tNow - n.effectTime;
       if (age <= HIT_FADE_TIME) drawHitburst(n, age, baseR);
 
     } else if (n.effect === "miss") {
-      const age = songT - n.effectTime;
+      const age = tNow - n.effectTime;
       if (age <= MISS_FADE_TIME) {
         const fall = age * MISS_FALL_SPEED;
         const shake =
@@ -445,7 +442,7 @@ function draw(songTime) {
         const y = n.targetY + fall;
 
         ctx.globalAlpha = 1 - age / MISS_FADE_TIME;
-        drawButtonNote(x, y, baseR, LANES[n.lane]);
+        drawButtonNote(x, y, baseR, lane);
         ctx.globalAlpha = 1;
       }
     }
@@ -458,15 +455,15 @@ function draw(songTime) {
     p.y += p.vy / 60;
 
     ctx.save();
-    const baseAlpha = Math.max(0, p.life / 0.4);
-    ctx.globalAlpha = baseAlpha * (0.5 + 0.5 * beatPulse);
+    const alpha = Math.max(0, p.life / 0.4) * (0.5 + 0.5 * beatPulse);
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = p.color;
     ctx.fillRect(p.x, p.y, 4, 4);
     ctx.restore();
   }
   particles = particles.filter(p => p.life > 0);
 
-  // HUD
+  // HUD — PROJECT BAGUETTE
   ctx.fillStyle = "#fff";
   ctx.font = "18px Arial";
   ctx.textAlign = "left";
@@ -474,13 +471,14 @@ function draw(songTime) {
   ctx.fillText("Score: " + score, 20, 55);
   ctx.fillText("Combo: " + combo, 20, 80);
 
-  const st = songTime;
-  if (st - lastHitTime < 0.5 && lastHitText) {
+  // Hit text
+  if (songTime - lastHitTime < 0.5 && lastHitText) {
     ctx.font = "32px Arial Black";
     ctx.textAlign = "center";
     ctx.fillText(lastHitText, width / 2, height * 0.2);
   }
 
+  // FPS + next note
   ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
   ctx.fillRect(width - 190, 10, 180, 70);
 
@@ -488,15 +486,16 @@ function draw(songTime) {
   ctx.font = "14px monospace";
   ctx.textAlign = "left";
   ctx.fillText(`FPS: ${fps.toFixed(1)}`, width - 180, 25);
-  ctx.fillText(`Time: ${st.toFixed(3)}s`, width - 180, 43);
+  ctx.fillText(`Time: ${songTime.toFixed(3)}s`, width - 180, 43);
 
   const upcoming = notes
-    .filter(n => !n.judged && n.time >= st)
+    .filter(n => !n.judged && n.time >= songTime)
     .sort((a, b) => a.time - b.time)[0];
 
   ctx.fillText(
-    `NextΔ: ${upcoming ? (upcoming.time - st).toFixed(3) : "---"}`,
-    width - 180, 61
+    `NextΔ: ${upcoming ? (upcoming.time - songTime).toFixed(3) : "---"}`,
+    width - 180,
+    61
   );
 }
 
