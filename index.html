@@ -1,86 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no" />
 <title>Project Baguette</title>
 
 <style>
-  body, html {
+  html, body {
     margin: 0;
     padding: 0;
+    background: black;
     overflow: hidden;
-    background: black;
     touch-action: manipulation;
-  }
-
-  /* START SCREEN */
-  #startScreen {
-    position: fixed;
-    inset: 0;
-    background: black;
-    color: white;
     font-family: Arial, sans-serif;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
   }
 
-  #logo {
-    font-size: 3rem;
-    margin-bottom: 20px;
-  }
-
-  #tapToStart {
-    opacity: 0.7;
-    font-size: 1.5rem;
-  }
-
-  /* MV stays hidden until JS reveals it */
+  /* MV background (hidden until JS fades it in) */
   #mv {
     position: fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    pointer-events:none;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
 
-    display:none;      /* prevents iOS white-screen frame */
-    opacity:0;
+    display: none;      /* prevents first-frame white flash on iOS */
+    opacity: 0;
     transition: opacity 1s ease;
+    z-index: 0;
   }
 
+  /* Canvas on top */
   #game {
-    position: relative;
+    position: fixed;
+    top: 0; left: 0;
     z-index: 1;
   }
 </style>
+
 </head>
 
 <body>
 
-  <!-- START SCREEN -->
-  <div id="startScreen">
-    <h1 id="logo">Project Baguette</h1>
-    <p id="tapToStart">Tap to Start</p>
-  </div>
-
-  <!-- MV background -->
+  <!-- Background MV -->
   <video id="mv"
          src="assets/defaults/mv-default.mp4"
          muted
-         playsinline>
-  </video>
+         playsinline></video>
 
-  <!-- Audio -->
+  <!-- Song (MP3 is recommended for iOS) -->
   <audio id="song"
          src="assets/defaults/song-demo.mp3"
          preload="none"></audio>
 
+  <!-- Game canvas -->
   <canvas id="game"></canvas>
 
+  <!-- Rhythm Engine v8-P-Fixed -->
   <script src="main.js"></script>
 
 </body>
