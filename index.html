@@ -19,14 +19,15 @@
 
     /* Music video in the background */
     #mv {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      z-index: 0;
-      filter: brightness(0.4) blur(2px); /* “stage lights” feel */
-    }
+  position: fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  pointer-events:none;
+  opacity:0;
+}
 
     /* Game canvas on top */
     #game {
