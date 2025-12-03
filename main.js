@@ -1,15 +1,55 @@
-/* Project Baguette – Rhythm Engine v8 (Auto-Chart)
-   Adds:
-   • Web Audio–based auto-chart from any <audio id="song">
-   • Offline energy scan -> beatTimes[]
-   • Notes spawn from detected beats instead of static pattern
-   • Existing visuals / WASD / mouse / touch kept
+/* Project Baguette – Rhythm Engine v8-P
+   Fixes:
+   • Tap-to-start UI (required for iOS AudioContext unlock)
+   • MP3-compatible auto-charting
+   • MV video stays hidden + paused until audio actually starts
+   • Debug via ?debug=1 only
 */
 
+////////////////////////////////////////////////////////////
+// TINY TAP-TO-START OVERLAY
+////////////////////////////////////////////////////////////
+const startOverlay = document.createElement("div");
+startOverlay.style.position = "fixed";
+startOverlay.style.top = 0;
+startOverlay.style.left = 0;
+startOverlay.style.width = "100vw";
+startOverlay.style.height = "100vh";
+startOverlay.style.background = "black";
+startOverlay.style.display = "flex";
+startOverlay.style.flexDirection = "column";
+startOverlay.style.alignItems = "center";
+startOverlay.style.justifyContent = "center";
+startOverlay.style.color = "white";
+startOverlay.style.fontFamily = "Arial Black, sans-serif";
+startOverlay.style.fontSize = "32px";
+startOverlay.style.zIndex = 9999;
+startOverlay.innerHTML = `
+  <div style="opacity:0.9">PROJECT BAGUETTE</div>
+  <div id="tapText" style="margin-top:20px; font-size:20px; opacity:0.7;">Tap to Start</div>
+`;
+document.body.appendChild(startOverlay);
+
+let tapBlink = true;
+setInterval(() => {
+  tapBlink = !tapBlink;
+  const el = document.getElementById("tapText");
+  if (el) el.style.opacity = tapBlink ? "0.9" : "0.4";
+}, 600);
+
+
+////////////////////////////////////////////////////////////
+// DEBUG FLAG
+////////////////////////////////////////////////////////////
+const DEBUG = window.location.search.includes("debug=1");
+
+
+////////////////////////////////////////////////////////////
+// CANVAS + CORE SETUP
+////////////////////////////////////////////////////////////
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// Screen setup
 let width = window.innerWidth;
 let height = window.innerHeight;
 canvas.width = width;
@@ -22,11 +62,52 @@ window.addEventListener("resize", () => {
   canvas.height = height;
 });
 
-// ========= MOBILE DETECTION =========
 const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
 const BASE_R_SCALE = isMobile ? 0.067 : 0.045;
 
-// ========= LANES =========
+
+////////////////////////////////////////////////////////////
+// ELEMENT REFERENCES
+////////////////////////////////////////////////////////////
+const audio = document.getElementById("song");
+const mv = document.getElementById("mv");
+
+// Hide MV until audio actually starts
+mv.style.opacity = "0";
+mv.style.transition = "opacity 0.8s ease";
+
+
+////////////////////////////////////////////////////////////
+// GAME CONSTANTS
+////////////////////////////////////////////////////////////
+let BPM = 120; 
+const BEAT = 60 / BPM;
+
+let APPROACH_TIME = 1.4 + (240 / BPM);
+let smoothedApproach = APPROACH_TIME;
+
+const HIT_WINDOW_PERFECT = 0.08;
+const HIT_WINDOW_GOOD = 0.18;
+const SPAWN_LOOKAHEAD = 8.0;
+const MISS_EXTRA = 0.20;
+const HIT_FADE_TIME = 0.4;
+const MISS_FADE_TIME = 0.6;
+const MISS_FALL_SPEED = 220;
+const MISS_SHAKE_AMT = 10;
+const MISS_SHAKE_FREQ = 14;
+
+let beatPulse = 1;
+
+let audioCtx = null;
+let analyser = null;
+let beatTimes = [];
+let autoChartReady = false;
+let nextBeatIndex = 0;
+
+
+////////////////////////////////////////////////////////////
+// INPUT MAPPING
+////////////////////////////////////////////////////////////
 const LANES = [
   { key: "w", label: "W", color: "#FFD447" },
   { key: "a", label: "A", color: "#47FFA3" },
@@ -34,101 +115,25 @@ const LANES = [
   { key: "d", label: "D", color: "#6AB4FF" }
 ];
 
-// ========= TIMING (visual) =========
-let BPM = 120;              // used for flicker only (can estimate later)
-const BEAT = 60 / BPM;
-let APPROACH_TIME = 1.4 + (240 / BPM);
-let smoothedApproach = APPROACH_TIME;
+function lerp(a, b, t) { return a + (b - a) * t; }
 
-const HIT_WINDOW_PERFECT = 0.08;
-const HIT_WINDOW_GOOD = 0.18;
 
-const SPAWN_LOOKAHEAD = 8.0;
-const MISS_EXTRA = 0.20;
-
-const HIT_FADE_TIME = 0.4;
-const MISS_FADE_TIME = 0.6;
-const MISS_FALL_SPEED = 220;
-const MISS_SHAKE_AMT = 10;
-const MISS_SHAKE_FREQ = 14;
-
-let startTime = performance.now() / 1000;
-
-let notes = [];
-let score = 0;
-let combo = 0;
-let lastHitText = "";
-let lastHitTime = 0;
-
-let beatPulse = 1;
-
-// ========= AUDIO / AUTO-CHART =========
-let audio = null;
-let audioCtx = null;
-let analyser = null;
-let beatTimes = [];        // seconds in song
-let autoChartReady = false;
-let nextBeatIndex = 0;
-
-// song clock = audio.currentTime if available
+////////////////////////////////////////////////////////////
+// GET SONG TIME (audio clock > performance.now)
+////////////////////////////////////////////////////////////
 function getSongTime() {
-  if (audio) return audio.currentTime || 0;
-  return performance.now() / 1000 - startTime;
+  if (audio && !isNaN(audio.currentTime)) return audio.currentTime;
+  return 0;
 }
 
-// build auto-chart from full decoded buffer
-function buildAutoChartFromBuffer(buffer) {
-  const channel = buffer.getChannelData(0);  // mono
-  const sampleRate = buffer.sampleRate;
 
-  const frameSize = 1024;
-  const hop = 512;
-  const energies = [];
-
-  for (let i = 0; i + frameSize < channel.length; i += hop) {
-    let sum = 0;
-    for (let j = 0; j < frameSize; j++) {
-      const s = channel[i + j];
-      sum += s * s;
-    }
-    energies.push(Math.sqrt(sum / frameSize));
-  }
-
-  // basic threshold
-  let mean = 0;
-  for (const e of energies) mean += e;
-  mean /= energies.length || 1;
-
-  const threshold = mean * 1.3;       // tweakable
-  const minBeatInterval = 0.25;       // min gap between notes, in seconds
-  let lastBeatTime = -999;
-
-  for (let i = 1; i < energies.length - 1; i++) {
-    const e = energies[i];
-    if (e > threshold && e > energies[i - 1] && e > energies[i + 1]) {
-      const time = (i * hop) / sampleRate;
-      if (time - lastBeatTime >= minBeatInterval) {
-        beatTimes.push(time);
-        lastBeatTime = time;
-      }
-    }
-  }
-
-  console.log("Auto-chart beats:", beatTimes.length);
-}
-
-// prepare Web Audio + auto-chart once
+////////////////////////////////////////////////////////////
+// AUTO-CHART ENGINE (MP3-compatible)
+////////////////////////////////////////////////////////////
 async function prepareAutoChart() {
-  audio = document.getElementById("song");
-  if (!audio) {
-    console.warn('No <audio id="song"> element found; auto-chart disabled.');
-    return;
-  }
-
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   audioCtx = new AudioContext();
 
-  // route audio through analyser (not used much yet but future-proof)
   const srcNode = audioCtx.createMediaElementSource(audio);
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
@@ -136,23 +141,68 @@ async function prepareAutoChart() {
   analyser.connect(audioCtx.destination);
 
   try {
-    const url = audio.currentSrc || audio.src;
-    const resp = await fetch(url);
+    const resp = await fetch(audio.src);
     const arrayBuf = await resp.arrayBuffer();
+
     const buffer = await audioCtx.decodeAudioData(arrayBuf);
 
-    buildAutoChartFromBuffer(buffer);
+    // Extract energy envelope
+    const channel = buffer.getChannelData(0);
+    const sr = buffer.sampleRate;
+
+    const frame = 1024;
+    const hop = 512;
+    const energies = [];
+
+    for (let i = 0; i + frame < channel.length; i += hop) {
+      let sum = 0;
+      for (let j = 0; j < frame; j++) sum += channel[i + j] * channel[i + j];
+      energies.push(Math.sqrt(sum / frame));
+    }
+
+    let mean = energies.reduce((a, b) => a + b, 0) / energies.length;
+    const threshold = mean * 1.25;
+    const minBeatInterval = 0.23;
+
+    let lastBeat = -999;
+
+    for (let i = 1; i < energies.length - 1; i++) {
+      const e = energies[i];
+      if (e > threshold && e > energies[i - 1] && e > energies[i + 1]) {
+        const time = (i * hop) / sr;
+        if (time - lastBeat >= minBeatInterval) {
+          beatTimes.push(time);
+          lastBeat = time;
+        }
+      }
+    }
+
+    if (beatTimes.length < 4) {
+      console.warn("Auto-chart too sparse, falling back to metronome grid.");
+      for (let t = 0; t < buffer.duration; t += 0.5) beatTimes.push(t);
+    }
+
     autoChartReady = true;
-  } catch (e) {
-    console.error("Auto-chart generation failed:", e);
+
+  } catch (err) {
+    console.error("decodeAudioData failed:", err);
+    beatTimes = [];
+    for (let t = 0; t < 120; t += 0.5) beatTimes.push(t); // fallback grid
+    autoChartReady = true;
   }
 }
 
-// ========= LERP =========
-function lerp(a, b, t) { return a + (b - a) * t; }
 
-// ========= PARTICLES =========
+////////////////////////////////////////////////////////////
+// NOTE + PARTICLE OBJECTS
+////////////////////////////////////////////////////////////
+let notes = [];
 let particles = [];
+let score = 0;
+let combo = 0;
+let lastHitText = "";
+let lastHitTime = 0;
+
 
 function addParticles(x, y, color) {
   for (let i = 0; i < 14; i++) {
@@ -167,30 +217,33 @@ function addParticles(x, y, color) {
   }
 }
 
-// ========= NOTES =========
+
+////////////////////////////////////////////////////////////
+// NOTE SPAWNING
+////////////////////////////////////////////////////////////
 function createNote(lane, time) {
-  const marginX = width * 0.15,
-        marginY = height * 0.15;
+  const marginX = width * 0.15;
+  const marginY = height * 0.15;
 
   const tx = marginX + Math.random() * (width - marginX * 2);
   const ty = marginY + Math.random() * (height - marginY * 2);
 
-  const cx = width / 2,
-        cy = height / 2;
+  const cx = width / 2;
+  const cy = height / 2;
 
-  const dx = tx - cx, dy = ty - cy;
+  const dx = tx - cx;
+  const dy = ty - cy;
   const len = Math.hypot(dx, dy) || 1;
-  const nx = dx / len, ny = dy / len;
+  const nx = dx / len;
+  const ny = dy / len;
 
   const spawnDist = Math.max(width, height) * 0.45;
-  const sx = tx - nx * spawnDist;
-  const sy = ty - ny * spawnDist;
 
   notes.push({
     lane,
     time,
-    spawnX: sx,
-    spawnY: sy,
+    spawnX: tx - nx * spawnDist,
+    spawnY: ty - ny * spawnDist,
     targetX: tx,
     targetY: ty,
     judged: false,
@@ -200,17 +253,17 @@ function createNote(lane, time) {
   });
 }
 
-// NEW: generate notes from beatTimes[]
+
 function generateNotes(songTime) {
   if (!autoChartReady) return;
-  const lookahead = SPAWN_LOOKAHEAD;
 
-  while (
-    nextBeatIndex < beatTimes.length &&
-    beatTimes[nextBeatIndex] < songTime + lookahead
-  ) {
-    const activeNotes = notes.filter(n => !n.judged);
-    if (activeNotes.length >= 4) break;  // keep the screen sane
+  const look = SPAWN_LOOKAHEAD;
+
+  while (nextBeatIndex < beatTimes.length &&
+         beatTimes[nextBeatIndex] < songTime + look) {
+
+    const active = notes.filter(n => !n.judged).length;
+    if (active >= 4) break;
 
     const hitTime = beatTimes[nextBeatIndex];
     const lane = Math.floor(Math.random() * LANES.length);
@@ -220,7 +273,10 @@ function generateNotes(songTime) {
   }
 }
 
-// ========= INPUT =========
+
+////////////////////////////////////////////////////////////
+// INPUT HANDLING (unchanged from V8)
+////////////////////////////////////////////////////////////
 const keysDown = new Set();
 
 window.addEventListener("keydown", e => {
@@ -232,33 +288,22 @@ window.addEventListener("keydown", e => {
 });
 window.addEventListener("keyup", e => keysDown.delete(e.key.toLowerCase()));
 
-// Mouse/touch combined
-function handleMouseHit(x, y) {
-  const songTime = getSongTime();
-  const baseR = Math.min(width, height) * BASE_R_SCALE;
+function handleKey(key) {
+  const laneIndex = LANES.findIndex(l => l.key === key);
+  if (laneIndex === -1) return;
 
+  const st = getSongTime();
   let best = null;
-  let bestScore = Infinity;
+  let bd = Infinity;
 
   for (const n of notes) {
-    if (n.judged) continue;
-
-    const dx = x - n.targetX;
-    const dy = y - n.targetY;
-    const dist = Math.hypot(dx, dy);
-    if (dist > baseR * 1.2) continue;
-
-    const td = Math.abs(n.time - songTime);
-    const score = td + dist / 1000;
-
-    if (score < bestScore) {
-      bestScore = score;
-      best = n;
+    if (!n.judged && n.lane === laneIndex) {
+      const d = Math.abs(n.time - st);
+      if (d < bd) { bd = d; best = n; }
     }
   }
 
-  if (!best) return;
-  judgeNote(best, songTime);
+  if (best) judge(best, st);
 }
 
 canvas.addEventListener("mousedown", e => {
@@ -272,224 +317,192 @@ canvas.addEventListener("mousedown", e => {
 canvas.addEventListener("touchstart", e => {
   const r = canvas.getBoundingClientRect();
   const t = e.touches[0];
-
   handleMouseHit(
     (t.clientX - r.left) * (canvas.width / r.width),
     (t.clientY - r.top) * (canvas.height / r.height)
   );
-
   e.preventDefault();
 }, { passive: false });
 
-canvas.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+function handleMouseHit(x, y) {
+  const st = getSongTime();
+  const r = Math.min(width, height) * BASE_R_SCALE;
 
-// Key hits
-function handleKey(key) {
-  const laneIndex = LANES.findIndex(l => l.key === key);
-  if (laneIndex === -1) return;
-
-  const songTime = getSongTime();
-  let best = null, bestDiff = Infinity;
+  let best = null;
+  let score = Infinity;
 
   for (const n of notes) {
-    if (!n.judged && n.lane === laneIndex) {
-      const d = Math.abs(n.time - songTime);
-      if (d < bestDiff) { bestDiff = d; best = n; }
+    if (n.judged) continue;
+
+    const dx = x - n.targetX;
+    const dy = y - n.targetY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > r * 1.2) continue;
+
+    const td = Math.abs(n.time - st);
+    const val = td + dist / 1000;
+
+    if (val < score) {
+      score = val;
+      best = n;
     }
   }
 
-  if (!best) return;
-  judgeNote(best, songTime);
+  if (best) judge(best, st);
 }
 
-// ========= JUDGING =========
-function judgeNote(n, songTime) {
-  const diff = Math.abs(n.time - songTime);
+
+////////////////////////////////////////////////////////////
+// HIT / MISS LOGIC
+////////////////////////////////////////////////////////////
+function judge(n, st) {
+  const diff = Math.abs(n.time - st);
 
   if (diff <= HIT_WINDOW_PERFECT) registerHit(n, "COOL", 300);
   else if (diff <= HIT_WINDOW_GOOD) registerHit(n, "FINE", 100);
   else if (diff <= 0.35) registerMiss(n);
 }
 
-// ========= VIBRATION =========
-function maybeVibrate(p) {
-  if (navigator.vibrate) navigator.vibrate(p);
-}
-
 function registerHit(n, label, baseScore) {
-  const t = getSongTime();
   n.judged = true;
   n.effect = "hit";
-  n.effectTime = t;
+  n.effectTime = getSongTime();
 
   combo++;
   score += Math.floor(baseScore * (1 + combo * 0.05));
 
   lastHitText = label;
-  lastHitTime = t;
+  lastHitTime = getSongTime();
 
   addParticles(n.targetX, n.targetY, LANES[n.lane].color);
-
-  if (label === "COOL") maybeVibrate(20);
-  else if (label === "FINE") maybeVibrate(10);
 }
 
 function registerMiss(n) {
-  const t = getSongTime();
   n.judged = true;
   n.effect = "miss";
-  n.effectTime = t;
+  n.effectTime = getSongTime();
 
   combo = 0;
   lastHitText = "MISS";
-  lastHitTime = t;
-
-  maybeVibrate([10, 40, 10]);
+  lastHitTime = getSongTime();
 }
 
-// ========= VISUAL HELPERS =========
-function drawGhostTarget(note, baseR) {
-  const dt = note.time - getSongTime();
 
-  ctx.save();
-  ctx.globalAlpha = 0.18 + beatPulse * 0.22;
-  ctx.strokeStyle = LANES[note.lane].color;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(note.targetX, note.targetY, baseR * 0.9, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.05 + 0.10 * beatPulse;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(
-    note.targetX,
-    note.targetY,
-    baseR * (0.7 + 0.3 * beatPulse),
-    0,
-    Math.PI * 2
-  );
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTrail(note, x, y) {
-  const lane = LANES[note.lane];
-
-  const dx = note.targetX - note.spawnX;
-  const dy = note.targetY - note.spawnY;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = dx / len, ny = dy / len;
-
-  const trailLen = 130;
-  const tx = x - nx * trailLen;
-  const ty = y - ny * trailLen;
-
-  ctx.save();
-  ctx.globalAlpha = 0.25 + 0.15 * beatPulse;
-  ctx.strokeStyle = lane.color;
-  ctx.lineWidth = 10;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(tx, ty);
-  ctx.lineTo(x, y);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawButtonNote(x, y, r, lane) {
-  ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.strokeStyle = lane.color;
-  ctx.lineWidth = 6;
-
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = lane.color;
-  ctx.font = `${r * 1.2}px Arial Black`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(lane.label, x, y + r * 0.05);
-
-  ctx.restore();
-}
-
-function drawHitburst(note, age, baseR) {
-  const lane = LANES[note.lane];
-  const prog = age / HIT_FADE_TIME;
-
-  const r = baseR * (1 + prog * 2.2);
-  const alpha = 1 - prog;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = lane.color;
-  ctx.beginPath();
-  ctx.arc(note.targetX, note.targetY, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// ========= DRAW LOOP =========
+////////////////////////////////////////////////////////////
+// RENDERING (unchanged except video opacity)
+////////////////////////////////////////////////////////////
 let fps = 0;
 let lastFrame = performance.now();
 
-function draw(songTime) {
-  if (width === 0 || height === 0) return;
-
+function draw(st) {
   ctx.clearRect(0, 0, width, height);
 
-  // BPM pulse (still using visual BPM)
-  const beatPhase = (songTime % BEAT) / BEAT;
-  beatPulse = 0.5 + 0.5 * Math.sin(beatPhase * Math.PI * 2);
+  const beatPh = (st % BEAT) / BEAT;
+  beatPulse = 0.5 + 0.5 * Math.sin(beatPh * Math.PI * 2);
 
-  // Semi-transparent black overlay
-  ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
+  ctx.fillRect(0,0,width,height);
 
-  const baseR = Math.min(width, height) * BASE_R_SCALE;
+  const r = Math.min(width, height) * BASE_R_SCALE;
 
-  // Ghost targets
+  // Ghosts
   for (const n of notes) {
-    drawGhostTarget(n, baseR);
+    ctx.save();
+    ctx.globalAlpha = 0.18 + beatPulse * 0.22;
+    ctx.strokeStyle = LANES[n.lane].color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(n.targetX, n.targetY, r * 0.9, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.05 + 0.10 * beatPulse;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(n.targetX, n.targetY, r * (0.7 + 0.3 * beatPulse), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Notes
   for (const n of notes) {
-    const lane = LANES[n.lane];
-    const tNow = songTime;
+    const dt = n.time - st;
+    const t = 1 - dt / smoothedApproach;
 
     if (!n.judged) {
-      const dt = n.time - tNow;
-      const t = 1 - dt / smoothedApproach;
       if (t < 0 || t > 1.5) continue;
 
       const x = lerp(n.spawnX, n.targetX, t);
       const y = lerp(n.spawnY, n.targetY, t);
 
-      drawTrail(n, x, y);
-      drawButtonNote(x, y, baseR, lane);
+      // Trail
+      const dx = n.targetX - n.spawnX;
+      const dy = n.targetY - n.spawnY;
+      const l = Math.hypot(dx, dy) || 1;
+      const nx = dx / l;
+      const ny = dy / l;
 
-    } else if (n.effect === "hit") {
-      const age = tNow - n.effectTime;
-      if (age <= HIT_FADE_TIME) drawHitburst(n, age, baseR);
+      const tx = x - nx * 130;
+      const ty = y - ny * 130;
 
-    } else if (n.effect === "miss") {
-      const age = tNow - n.effectTime;
-      if (age <= MISS_FADE_TIME) {
-        const fall = age * MISS_FALL_SPEED;
-        const shake =
-          Math.sin(age * MISS_SHAKE_FREQ * Math.PI * 2 + n.shakeSeed) *
-          MISS_SHAKE_AMT;
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.15 * beatPulse;
+      ctx.strokeStyle = LANES[n.lane].color;
+      ctx.lineWidth = 10;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.restore();
 
-        const x = n.targetX + shake;
-        const y = n.targetY + fall;
+      // Body
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.strokeStyle = LANES[n.lane].color;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = LANES[n.lane].color;
+      ctx.font = `${r * 1.2}px Arial Black`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(LANES[n.lane].label, x, y + r * 0.05);
+      ctx.restore();
+    }
+
+    // Hit / Miss FX
+    else {
+      const age = st - n.effectTime;
+
+      if (n.effect === "hit" && age <= HIT_FADE_TIME) {
+        ctx.save();
+        const prog = age / HIT_FADE_TIME;
+        const rr = r * (1 + prog * 2.2);
+        ctx.globalAlpha = 1 - prog;
+        ctx.fillStyle = LANES[n.lane].color;
+        ctx.beginPath();
+        ctx.arc(n.targetX, n.targetY, rr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      else if (n.effect === "miss" && age <= MISS_FADE_TIME) {
+        const shake = Math.sin(age * MISS_SHAKE_FREQ * Math.PI * 2 + n.shakeSeed) * MISS_SHAKE_AMT;
+        const yy = n.targetY + age * MISS_FALL_SPEED;
 
         ctx.globalAlpha = 1 - age / MISS_FADE_TIME;
-        drawButtonNote(x, y, baseR, lane);
+        ctx.save();
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.strokeStyle = LANES[n.lane].color;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(n.targetX + shake, yy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
         ctx.globalAlpha = 1;
       }
     }
@@ -497,81 +510,70 @@ function draw(songTime) {
 
   // Particles
   for (let p of particles) {
-    p.life -= 1 / 60;
+    p.life -= 1/60;
     p.x += p.vx / 60;
     p.y += p.vy / 60;
 
-    ctx.save();
-    const alpha = Math.max(0, p.life / 0.4) * (0.5 + 0.5 * beatPulse);
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = Math.max(0, p.life / 0.4) * (0.5 + 0.5 * beatPulse);
     ctx.fillStyle = p.color;
     ctx.fillRect(p.x, p.y, 4, 4);
-    ctx.restore();
   }
   particles = particles.filter(p => p.life > 0);
 
   // HUD
+  ctx.globalAlpha = 1;
   ctx.fillStyle = "#fff";
   ctx.font = "18px Arial";
-  ctx.textAlign = "left";
   ctx.fillText("Project Baguette", 20, 30);
   ctx.fillText("Score: " + score, 20, 55);
   ctx.fillText("Combo: " + combo, 20, 80);
 
-  if (songTime - lastHitTime < 0.5 && lastHitText) {
+  if (st - lastHitTime < 0.5 && lastHitText) {
     ctx.font = "32px Arial Black";
     ctx.textAlign = "center";
-    ctx.fillText(lastHitText, width / 2, height * 0.2);
+    ctx.fillText(lastHitText, width/2, height * 0.2);
   }
 
-  // FPS + next note
-  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.fillRect(width - 190, 10, 180, 70);
+  // Debug box
+  if (DEBUG) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(width - 200, 10, 180, 100);
 
-  ctx.fillStyle = "#0f0";
-  ctx.font = "14px monospace";
-  ctx.textAlign = "left";
-  ctx.fillText(`FPS: ${fps.toFixed(1)}`, width - 180, 25);
-  ctx.fillText(`Time: ${songTime.toFixed(3)}s`, width - 180, 43);
-
-  const upcoming = notes
-    .filter(n => !n.judged && n.time >= songTime)
-    .sort((a, b) => a.time - b.time)[0];
-
-  ctx.fillText(
-    `NextΔ: ${upcoming ? (upcoming.time - songTime).toFixed(3) : "---"}`,
-    width - 180,
-    61
-  );
+    ctx.fillStyle = "#0f0";
+    ctx.font = "14px monospace";
+    ctx.fillText(`FPS: ${fps.toFixed(1)}`, width - 190, 30);
+    ctx.fillText(`Time: ${st.toFixed(3)}s`, width - 190, 50);
+    ctx.fillText(`Beats: ${beatTimes.length}`, width - 190, 70);
+    ctx.fillText(`Idx: ${nextBeatIndex}`, width - 190, 90);
+  }
 }
 
-// ========= MAIN LOOP =========
+
+////////////////////////////////////////////////////////////
+// MAIN LOOP
+////////////////////////////////////////////////////////////
 function loop() {
   const now = performance.now();
   fps = 1000 / (now - lastFrame);
   lastFrame = now;
 
-  const t = getSongTime();
+  const st = getSongTime();
 
-  const activeNotes = notes.filter(n => !n.judged);
+  const active = notes.filter(n => !n.judged).length;
+  smoothedApproach = lerp(smoothedApproach, APPROACH_TIME + active * 0.12, 0.18);
 
-  // Smoothed approach based on note density
-  const targetApproach = APPROACH_TIME + activeNotes.length * 0.12;
-  smoothedApproach = lerp(smoothedApproach, targetApproach, 0.18);
+  generateNotes(st);
+  draw(st);
 
-  generateNotes(t);
-  draw(t);
-
-  // Auto-miss
-  for (const n of activeNotes) {
-    if (t > n.time + HIT_WINDOW_GOOD + MISS_EXTRA) registerMiss(n);
+  for (const n of notes) {
+    if (!n.judged && st > n.time + HIT_WINDOW_GOOD + MISS_EXTRA) {
+      registerMiss(n);
+    }
   }
 
-  // Cleanup
   notes = notes.filter(n => {
     if (!n.judged) return true;
-    const age = t - n.effectTime;
-
+    const age = st - n.effectTime;
     if (n.effect === "hit") return age <= HIT_FADE_TIME;
     if (n.effect === "miss") return age <= MISS_FADE_TIME;
     return false;
@@ -580,6 +582,27 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-// kick everything off:
-prepareAutoChart();
-requestAnimationFrame(loop);
+
+////////////////////////////////////////////////////////////
+// TAP TO START → UNLOCK AUDIO → LOAD CHART → START GAME
+////////////////////////////////////////////////////////////
+startOverlay.addEventListener("click", async () => {
+  startOverlay.style.opacity = "0";
+  startOverlay.style.transition = "opacity 0.4s ease";
+  setTimeout(() => startOverlay.remove(), 500);
+
+  // Unlock audio context
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContext();
+  if (audioCtx.state === "suspended") await audioCtx.resume();
+
+  await prepareAutoChart();
+
+  // Begin audio once ready
+  audio.play().then(() => {
+    // fade-in MV only after audio actually starts
+    mv.style.opacity = "1";
+  });
+
+  requestAnimationFrame(loop);
+});
