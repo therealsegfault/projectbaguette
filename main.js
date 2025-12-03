@@ -1,9 +1,9 @@
-/* Project Baguette – Rhythm Engine v7.1 (Optimized)
-   Improvements:
-   A: activeNotes cached per frame
-   B: Smoothed adaptive approach time (Diva-like motion)
-   C: Clean hit/miss logic
-   D: Mobile circle scale +50%
+/* Project Baguette – Rhythm Engine v8 (Auto-Chart)
+   Adds:
+   • Web Audio–based auto-chart from any <audio id="song">
+   • Offline energy scan -> beatTimes[]
+   • Notes spawn from detected beats instead of static pattern
+   • Existing visuals / WASD / mouse / touch kept
 */
 
 const canvas = document.getElementById("game");
@@ -34,8 +34,8 @@ const LANES = [
   { key: "d", label: "D", color: "#6AB4FF" }
 ];
 
-// ========= TIMING =========
-const BPM = 120;
+// ========= TIMING (visual) =========
+let BPM = 120;              // used for flicker only (can estimate later)
 const BEAT = 60 / BPM;
 let APPROACH_TIME = 1.4 + (240 / BPM);
 let smoothedApproach = APPROACH_TIME;
@@ -60,32 +60,96 @@ let combo = 0;
 let lastHitText = "";
 let lastHitTime = 0;
 
-let nextBeatTime = 1.0;
-let beatIndex = 0;
-
 let beatPulse = 1;
 
-// ========= UTILS =========
+// ========= AUDIO / AUTO-CHART =========
+let audio = null;
+let audioCtx = null;
+let analyser = null;
+let beatTimes = [];        // seconds in song
+let autoChartReady = false;
+let nextBeatIndex = 0;
+
+// song clock = audio.currentTime if available
 function getSongTime() {
+  if (audio) return audio.currentTime || 0;
   return performance.now() / 1000 - startTime;
 }
-function lerp(a, b, t) { return a + (b - a) * t; }
 
-// ========= PATTERN TABLE =========
-const patternTable = [
-  [
-    [0, null, null, null],
-    [1, null, 2, null],
-    [null, null, null, null],
-    [3, null, null, null],
-  ],
-  [
-    [0, null, 1, null],
-    [null, null, 2, null],
-    [1, null, null, 3],
-    [null, 0, null, null],
-  ]
-];
+// build auto-chart from full decoded buffer
+function buildAutoChartFromBuffer(buffer) {
+  const channel = buffer.getChannelData(0);  // mono
+  const sampleRate = buffer.sampleRate;
+
+  const frameSize = 1024;
+  const hop = 512;
+  const energies = [];
+
+  for (let i = 0; i + frameSize < channel.length; i += hop) {
+    let sum = 0;
+    for (let j = 0; j < frameSize; j++) {
+      const s = channel[i + j];
+      sum += s * s;
+    }
+    energies.push(Math.sqrt(sum / frameSize));
+  }
+
+  // basic threshold
+  let mean = 0;
+  for (const e of energies) mean += e;
+  mean /= energies.length || 1;
+
+  const threshold = mean * 1.3;       // tweakable
+  const minBeatInterval = 0.25;       // min gap between notes, in seconds
+  let lastBeatTime = -999;
+
+  for (let i = 1; i < energies.length - 1; i++) {
+    const e = energies[i];
+    if (e > threshold && e > energies[i - 1] && e > energies[i + 1]) {
+      const time = (i * hop) / sampleRate;
+      if (time - lastBeatTime >= minBeatInterval) {
+        beatTimes.push(time);
+        lastBeatTime = time;
+      }
+    }
+  }
+
+  console.log("Auto-chart beats:", beatTimes.length);
+}
+
+// prepare Web Audio + auto-chart once
+async function prepareAutoChart() {
+  audio = document.getElementById("song");
+  if (!audio) {
+    console.warn('No <audio id="song"> element found; auto-chart disabled.');
+    return;
+  }
+
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContext();
+
+  // route audio through analyser (not used much yet but future-proof)
+  const srcNode = audioCtx.createMediaElementSource(audio);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  srcNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  try {
+    const url = audio.currentSrc || audio.src;
+    const resp = await fetch(url);
+    const arrayBuf = await resp.arrayBuffer();
+    const buffer = await audioCtx.decodeAudioData(arrayBuf);
+
+    buildAutoChartFromBuffer(buffer);
+    autoChartReady = true;
+  } catch (e) {
+    console.error("Auto-chart generation failed:", e);
+  }
+}
+
+// ========= LERP =========
+function lerp(a, b, t) { return a + (b - a) * t; }
 
 // ========= PARTICLES =========
 let particles = [];
@@ -103,7 +167,7 @@ function addParticles(x, y, color) {
   }
 }
 
-// ========= NOTE GENERATION =========
+// ========= NOTES =========
 function createNote(lane, time) {
   const marginX = width * 0.15,
         marginY = height * 0.15;
@@ -136,32 +200,23 @@ function createNote(lane, time) {
   });
 }
 
+// NEW: generate notes from beatTimes[]
 function generateNotes(songTime) {
-  while (nextBeatTime < songTime + SPAWN_LOOKAHEAD) {
+  if (!autoChartReady) return;
+  const lookahead = SPAWN_LOOKAHEAD;
 
-    // limit active notes
+  while (
+    nextBeatIndex < beatTimes.length &&
+    beatTimes[nextBeatIndex] < songTime + lookahead
+  ) {
     const activeNotes = notes.filter(n => !n.judged);
-    if (activeNotes.length >= 4) {
-      nextBeatTime += BEAT;
-      beatIndex++;
-      continue;
-    }
+    if (activeNotes.length >= 4) break;  // keep the screen sane
 
-    const measureIndex = Math.floor(beatIndex / 4) % patternTable.length;
-    const beatInMeasure = beatIndex % 4;
-    const pattern = patternTable[measureIndex][beatInMeasure];
+    const hitTime = beatTimes[nextBeatIndex];
+    const lane = Math.floor(Math.random() * LANES.length);
 
-    for (let sub = 0; sub < 4; sub++) {
-      const lane = pattern[sub];
-      if (lane !== null) {
-        const jitter = (Math.random() * 0.12) - 0.06;
-        const t = nextBeatTime + sub * (BEAT / 4) + jitter;
-        createNote(lane, t);
-      }
-    }
-
-    nextBeatTime += BEAT;
-    beatIndex++;
+    createNote(lane, hitTime);
+    nextBeatIndex++;
   }
 }
 
@@ -247,7 +302,7 @@ function handleKey(key) {
   judgeNote(best, songTime);
 }
 
-// Unified judge
+// ========= JUDGING =========
 function judgeNote(n, songTime) {
   const diff = Math.abs(n.time - songTime);
 
@@ -295,7 +350,6 @@ function registerMiss(n) {
 // ========= VISUAL HELPERS =========
 function drawGhostTarget(note, baseR) {
   const dt = note.time - getSongTime();
-  const approach = Math.max(0, Math.min(1, 1 - dt / smoothedApproach));
 
   ctx.save();
   ctx.globalAlpha = 0.18 + beatPulse * 0.22;
@@ -380,37 +434,30 @@ function drawHitburst(note, age, baseR) {
 }
 
 // ========= DRAW LOOP =========
+let fps = 0;
+let lastFrame = performance.now();
+
 function draw(songTime) {
   if (width === 0 || height === 0) return;
 
   ctx.clearRect(0, 0, width, height);
 
-  // BPM pulse
+  // BPM pulse (still using visual BPM)
   const beatPhase = (songTime % BEAT) / BEAT;
   beatPulse = 0.5 + 0.5 * Math.sin(beatPhase * Math.PI * 2);
 
-  // Enforce at most 4 active notes
-  const activeSorted = notes
-    .filter(n => !n.judged)
-    .sort((a, b) => a.time - b.time);
-
-  if (activeSorted.length > 4) {
-    const excess = activeSorted.length - 4;
-    for (let i = 0; i < excess; i++) registerMiss(activeSorted[i]);
-  }
-
-  // semi-transparent black overlay
+  // Semi-transparent black overlay
   ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
   ctx.fillRect(0, 0, width, height);
 
   const baseR = Math.min(width, height) * BASE_R_SCALE;
 
-  // ghost targets
+  // Ghost targets
   for (const n of notes) {
     drawGhostTarget(n, baseR);
   }
 
-  // notes
+  // Notes
   for (const n of notes) {
     const lane = LANES[n.lane];
     const tNow = songTime;
@@ -448,7 +495,7 @@ function draw(songTime) {
     }
   }
 
-  // particles
+  // Particles
   for (let p of particles) {
     p.life -= 1 / 60;
     p.x += p.vx / 60;
@@ -463,7 +510,7 @@ function draw(songTime) {
   }
   particles = particles.filter(p => p.life > 0);
 
-  // HUD — PROJECT BAGUETTE
+  // HUD
   ctx.fillStyle = "#fff";
   ctx.font = "18px Arial";
   ctx.textAlign = "left";
@@ -471,7 +518,6 @@ function draw(songTime) {
   ctx.fillText("Score: " + score, 20, 55);
   ctx.fillText("Combo: " + combo, 20, 80);
 
-  // Hit text
   if (songTime - lastHitTime < 0.5 && lastHitText) {
     ctx.font = "32px Arial Black";
     ctx.textAlign = "center";
@@ -500,9 +546,6 @@ function draw(songTime) {
 }
 
 // ========= MAIN LOOP =========
-let fps = 0;
-let lastFrame = performance.now();  
-
 function loop() {
   const now = performance.now();
   fps = 1000 / (now - lastFrame);
@@ -512,7 +555,7 @@ function loop() {
 
   const activeNotes = notes.filter(n => !n.judged);
 
-  // Smoothed approach
+  // Smoothed approach based on note density
   const targetApproach = APPROACH_TIME + activeNotes.length * 0.12;
   smoothedApproach = lerp(smoothedApproach, targetApproach, 0.18);
 
@@ -537,4 +580,6 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// kick everything off:
+prepareAutoChart();
 requestAnimationFrame(loop);
