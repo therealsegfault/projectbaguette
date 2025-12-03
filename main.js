@@ -310,7 +310,7 @@ function loop() {
   smoothedApproach = lerp(smoothedApproach, targetApproach, 0.18);
 
   generateNotes(t);
-  draw(t, activeNotes);
+  draw(t);
 
   // Auto-miss
   for (const n of activeNotes) {
