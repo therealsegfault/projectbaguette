@@ -500,6 +500,9 @@ function draw(songTime) {
 }
 
 // ========= MAIN LOOP =========
+let fps = 0;
+let lastFrame = performance.now();  
+
 function loop() {
   const now = performance.now();
   fps = 1000 / (now - lastFrame);
