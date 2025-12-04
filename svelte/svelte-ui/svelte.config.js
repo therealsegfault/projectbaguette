@@ -1,23 +1,20 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
-/** @type {import('@sveltejs/kit').Config} */
-const config = {
+const dev = process.argv.includes('dev');
+
+export default {
   preprocess: vitePreprocess(),
 
   kit: {
     adapter: adapter({
       pages: 'build',
       assets: 'build',
-      fallback: 'index.html',
-      strict: false       // don't complain about "dynamic routes"
+      fallback: 'index.html'
     }),
 
-    // GitHub Pages: repo is /projectbaguette so base must match
     paths: {
-      base: process.env.NODE_ENV === 'production' ? '/projectbaguette' : ''
+      base: dev ? '' : '/projectbaguette'
     }
   }
 };
-
-export default config;
