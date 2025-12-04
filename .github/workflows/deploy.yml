@@ -26,7 +26,7 @@ jobs:
           cd svelte/svelte-ui
           npm install
 
-        - name: 🏗️ Build Svelte UI
+      - name: 🏗️ Build Svelte UI
         run: |
           cd svelte/svelte-ui
           npm run build
