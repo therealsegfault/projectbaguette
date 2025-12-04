@@ -21,23 +21,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: 📁 Install Svelte UI deps (force)
+      - name: 📁 Install Svelte UI deps (force resolve)
         run: |
           cd svelte/svelte-ui
-          npm install --legacy-peer-deps
+          npm install --force --legacy-peer-deps
 
       - name: 🏗️ Build Svelte UI
         run: |
           cd svelte/svelte-ui
           npm run build
 
-          # Clean docs folder
+          # Clean old docs and create fresh deploy folder
           rm -rf ../../docs
-
-          # Create correct folder for GitHub Pages
           mkdir -p ../../docs/projectbaguette
 
-          # Copy build output
           cp -r build/* ../../docs/projectbaguette
 
       - name: 🚀 Deploy to GitHub Pages
