@@ -1,16 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8">
     <title>Project Baguette</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;600;700&display=swap">
-    <script type="module" src="/projectbaguette/src/main.ts"></script>
-    <style>
-      body, html { margin:0; height:100%; background:#000; overflow:hidden; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="module" src="/js/main.js"></script>
+    <style>body{margin:0;background:#000}</style>
   </head>
   <body>
-    <div id="svelte"></div>
+    <canvas id="game"></canvas>
+    <video id="mv" loop muted playsinline></video>
+    <audio id="song"></audio>
   </body>
 </html>
