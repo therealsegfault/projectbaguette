@@ -1,45 +1,41 @@
-name: Deploy SvelteKit to Pages
+name: Deploy UI to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 18
 
-      - name: Install dependencies
-        run: npm ci
+      # STEP 1: Move into the Svelte UI directory
+      - name: 📁 Move into Svelte UI folder
+        run: cd svelte/svelte-ui && npm install
 
-      - name: Build
-        run: npm run build
+      # STEP 2: Build static site into /docs
+      - name: 🏗️ Build Svelte UI
+        run: |
+          cd svelte/svelte-ui
+          npm run build
+          rm -rf ../../docs
+          mkdir ../../docs
+          cp -r build/* ../../docs
 
-      - name: Upload build output
-        uses: actions/upload-pages-artifact@v3
+      - name: 🚀 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: build  # <-- static adapter output folder
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Deploy to Pages
-        id: deploy
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
