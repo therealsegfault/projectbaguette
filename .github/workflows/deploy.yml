@@ -19,13 +19,13 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
 
-      # STEP 1: Move into the Svelte UI directory
-      - name: 📁 Move into Svelte UI folder
-        run: cd svelte/svelte-ui && npm install
+      - name: 📁 Install Svelte UI deps
+        run: |
+          cd svelte/svelte-ui
+          npm install
 
-      # STEP 2: Build static site into /docs
       - name: 🏗️ Build Svelte UI
         run: |
           cd svelte/svelte-ui
