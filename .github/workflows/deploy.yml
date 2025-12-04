@@ -12,7 +12,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
@@ -22,22 +21,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: 📁 Install Svelte UI deps
+      - name: 📁 Install Svelte UI deps (force)
         run: |
           cd svelte/svelte-ui
-          npm install
+          npm install --legacy-peer-deps
 
       - name: 🏗️ Build Svelte UI
         run: |
           cd svelte/svelte-ui
           npm run build
 
-          # Clean old docs
+          # Clean docs folder
           rm -rf ../../docs
 
-          # Copy build into docs root
-          mkdir -p ../../docs
-          cp -r build/* ../../docs
+          # Create correct folder for GitHub Pages
+          mkdir -p ../../docs/projectbaguette
+
+          # Copy build output
+          cp -r build/* ../../docs/projectbaguette
 
       - name: 🚀 Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
