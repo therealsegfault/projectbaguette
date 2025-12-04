@@ -1,8 +1,9 @@
-/* Project Baguette – Rhythm Engine v8-P (Fixed)
+/* Project Baguette – Rhythm Engine v8-P (Fixed+MV)
    • ONE tap-to-start overlay (Safari-safe)
    • MP3-compatible auto-chart
-   • MV only appears after audio begins playing
+   • MV only appears after audio begins playing (with play() call)
    • Debug enabled via ?debug=1
+   • Mobile circles +50% larger
 */
 
 ////////////////////////////////////////////////////////////
@@ -38,7 +39,8 @@ window.addEventListener("resize", () => {
 });
 
 const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-const BASE_R_SCALE = isMobile ? 0.067 : 0.045;
+// 50% bigger circles on mobile (0.067 * 1.5 ≈ 0.10)
+const BASE_R_SCALE = isMobile ? 0.10 : 0.045;
 
 
 ////////////////////////////////////////////////////////////
@@ -115,6 +117,7 @@ const LANES = [
 ];
 
 
+////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 // SONG TIME (audio clock)
 ////////////////////////////////////////////////////////////
@@ -316,7 +319,7 @@ function hitAt(x, y) {
   const r = Math.min(width, height) * BASE_R_SCALE;
 
   let best = null;
-  let score = Infinity;
+  let scoreVal = Infinity;
 
   for (const n of notes) {
     if (n.judged) continue;
@@ -330,8 +333,8 @@ function hitAt(x, y) {
     const td = Math.abs(n.time - t);
     const val = td + dist / 1000;
 
-    if (val < score) {
-      score = val;
+    if (val < scoreVal) {
+      scoreVal = val;
       best = n;
     }
   }
@@ -507,6 +510,7 @@ function draw(t) {
   // HUD
   ctx.fillStyle = "#fff";
   ctx.font = "18px Arial";
+  ctx.textAlign = "left";
   ctx.fillText("Project Baguette", 20, 30);
   ctx.fillText("Score: " + score, 20, 55);
   ctx.fillText("Combo: " + combo, 20, 80);
@@ -523,6 +527,7 @@ function draw(t) {
 
     ctx.fillStyle = "#0f0";
     ctx.font = "14px monospace";
+    ctx.textAlign = "left";
     ctx.fillText(`FPS: ${fps.toFixed(1)}`, width - 190, 30);
     ctx.fillText(`Time: ${t.toFixed(3)}s`, width - 190, 50);
     ctx.fillText(`Beats: ${beatTimes.length}`, width - 190, 70);
@@ -566,7 +571,7 @@ function loop() {
 
 
 ////////////////////////////////////////////////////////////
-// TAP START HANDLER
+// TAP START HANDLER (with MV playback)
 ////////////////////////////////////////////////////////////
 startOverlay.addEventListener("click", async () => {
 
@@ -592,9 +597,27 @@ startOverlay.addEventListener("click", async () => {
     return;
   }
 
-  // Reveal MV background
-  mv.style.display = "block";
-  requestAnimationFrame(() => { mv.style.opacity = "1"; });
+  // MV playback helper
+  const startMV = () => {
+    mv.style.display = "block";
+    requestAnimationFrame(() => { mv.style.opacity = "1"; });
+
+    try {
+      mv.currentTime = 0;
+      const p = mv.play();
+      if (p && p.catch) {
+        p.catch(err => console.warn("MV play blocked:", err));
+      }
+    } catch (err) {
+      console.warn("MV play() error:", err);
+    }
+  };
+
+  if (mv.readyState >= 2) {
+    startMV();
+  } else {
+    mv.addEventListener("loadeddata", startMV, { once: true });
+  }
 
   // Begin game
   requestAnimationFrame(loop);
