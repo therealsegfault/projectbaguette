@@ -1,9 +1,8 @@
 import adapter from '@sveltejs/adapter-static';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { vitePreprocess } from '@sveltejs/kit/vite';
 
-const dev = process.argv.includes('dev');
-
-export default {
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
   preprocess: vitePreprocess(),
 
   kit: {
@@ -13,8 +12,15 @@ export default {
       fallback: 'index.html'
     }),
 
+    // GitHub Pages subpath support
     paths: {
-      base: dev ? '' : '/projectbaguette'
+      base: process.env.NODE_ENV === 'production' ? '/projectbaguette' : ''
+    },
+
+    prerender: {
+      handleHttpError: 'warn'
     }
   }
 };
+
+export default config;
