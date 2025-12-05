@@ -1,51 +1,51 @@
 // js/game/loop.js
-import { draw } from "./render.js";
-import { getSongTime } from "./audio.js";
-import { notes, smoothedApproach, APPROACH_TIME, generateNotes, HIT_WINDOW_GOOD, MISS_EXTRA, registerMiss } from "./notes.js";
-import { setSmoothedApproach } from "./notes.js";
+//
+// High-speed uncapped main loop
+// Behavior preserved from v8-P engine
+//
 
-let fps = 0;
+import { getSongTime } from "./time.js";
+import { generateNotes, notes, cleanupNotes, APPROACH_TIME } from "./notes.js";
+import { drawFrame } from "./render.js";
+import { registerMiss, HIT_WINDOW_GOOD, MISS_EXTRA } from "./judge.js";
+import { particles, cleanupParticles } from "./particles.js";
+
+// exported so start.js can trigger
+export function startLoop() {
+  requestAnimationFrame(loop);
+}
+
 let lastFrame = performance.now();
+let fps = 0;
+let smoothedApproach = APPROACH_TIME;
 
-function step() {
+function loop() {
   const now = performance.now();
   fps = 1000 / (now - lastFrame);
   lastFrame = now;
 
   const t = getSongTime();
 
-  // Difficulty scaling by note density
+  // adaptive approach: more active notes = longer travel time
   const active = notes.filter(n => !n.judged).length;
-  setSmoothedApproach(smoothedApproach + (APPROACH_TIME + active * 0.12 - smoothedApproach) * 0.18);
+  smoothedApproach = smoothedApproach + (APPROACH_TIME + active * 0.12 - smoothedApproach) * 0.18;
 
+  // generate upcoming notes from beat list
   generateNotes(t);
-  draw(t, fps);
 
-  // Auto-miss
+  // render current frame
+  drawFrame(t, fps, smoothedApproach);
+
+  // mark too-late notes as misses
   for (const n of notes) {
     if (!n.judged && t > n.time + HIT_WINDOW_GOOD + MISS_EXTRA) {
       registerMiss(n);
     }
   }
 
-  // Remove dead effects
-  const toKeep = [];
-  for (const n of notes) {
-    if (!n.judged) toKeep.push(n);
-    else {
-      const age = t - n.effectTime;
-      if ((n.effect === "hit" && age <= 0.4) || (n.effect === "miss" && age <= 0.6)) {
-        toKeep.push(n);
-      }
-    }
-  }
-  notes.length = 0;
-  notes.push(...toKeep);
+  // cleanup judged + faded notes & particles
+  cleanupNotes(t);
+  cleanupParticles();
 
-  requestAnimationFrame(step);
-}
-
-// Export start function
-export function startLoop() {
-  requestAnimationFrame(step);
+  requestAnimationFrame(loop);
 }
