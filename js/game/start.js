@@ -1,4 +1,4 @@
-import { prepareAutoChart } from "./audio.js";
+import { unlockAudioContext, prepareAutoChart } from "./audio.js";
 import { startLoop } from "./loop.js";
 
 const overlay = document.getElementById("startOverlay");
