@@ -2,6 +2,9 @@
 import { width, height } from "./core.js";
 import { getSongTime, beatTimes, autoChartReady, nextBeatIndex } from "./audio.js";
 
+export let BPM = 120;
+export const BEAT = 60 / BPM;
+
 export const LANES = [
   { key: "w", label: "W", color: "#FFD447" },
   { key: "a", label: "A", color: "#47FFA3" },
