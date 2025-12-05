@@ -4,6 +4,7 @@
 import { getSongTime } from "./time.js";
 import { LANES } from "./lanes.js";
 import { addParticles } from "./particles.js";
+import { setHitDisplay } from "./render.js";
 
 export let score = 0;
 export let combo = 0;
@@ -33,11 +34,10 @@ export function registerHit(n, label, baseScore) {
 
   lastHitText = label;
   lastHitTime = getSongTime();
-  import { setHitDisplay } from "./render.js";
-setHitDisplay(n.targetX, n.targetY, LANES[n.lane].color);
-  
-setHitDisplay(n.targetX, n.targetY, "#ccc");
-  
+
+  // Visual feedback call (simple color)
+  setHitDisplay(n.targetX, n.targetY, LANES[n.lane].color);
+
   addParticles(n.targetX, n.targetY, LANES[n.lane].color);
 }
 
