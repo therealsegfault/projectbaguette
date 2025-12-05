@@ -1,62 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Project Baguette</title>
-
+  <meta charset="UTF-8" />
+  <title>PB Test</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      background: black;
+      background: #000;
       overflow: hidden;
-      touch-action: manipulation;
-      font-family: Arial, sans-serif;
+      touch-action: none;
     }
-
-    /* Canvas behind everything by default */
-    #game {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      background: black;
-    }
-
-    /* MV Video background */
     #mv {
       position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
       object-fit: cover;
-      z-index: 1;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 1s ease;
+      z-index: -1;
     }
-
-    /* Hide native audio UI */
-    #song {
-      display: none;
+    #game {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
     }
   </style>
 </head>
 
 <body>
 
-  <!-- Background MV -->
-  <video id="mv" src="assets/defaults/mv-default.mp4" muted playsinline></video>
+  <!-- TEST VIDEO -->
+  <video id="mv" preload="auto" muted playsinline>
+    <source src="assets/test_mv.mp4" type="video/mp4" />
+  </video>
 
-  <!-- Game Canvas -->
+  <!-- TEST AUDIO -->
+  <audio id="song" preload="auto">
+    <source src="assets/test_song.mp3" type="audio/mpeg" />
+  </audio>
+
+  <!-- GAME CANVAS -->
   <canvas id="game"></canvas>
 
-  <!-- Song Audio -->
-  <audio id="song" preload="auto"
-         src="assets/defaults/song-demo.mp3"
-         type="audio/mpeg"></audio>
-
-  <!-- Your Game Script -->
-<script type="module" src="./js/main.js"></script>
+  <!-- ENGINE ENTRYPOINT -->
+  <script type="module" src="./js/main.js"></script>
 
 </body>
 </html>
