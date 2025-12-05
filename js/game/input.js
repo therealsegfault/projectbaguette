@@ -1,7 +1,5 @@
 /* ---------- input.js ---------- */
-import { canvas, BASE_R_SCALE, width, height } from "./core.js";
-import { notes, LANES, registerHit, registerMiss } from "./notes.js";
-import { getSongTime } from "./audio.js";
+
 
 const keysDown = new Set();
 
