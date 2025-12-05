@@ -1,8 +1,10 @@
-// js/main.js  (no changes needed if this matches your structure)
-import "./game/core.js";
-import "./game/audio.js";
-import "./game/notes.js";
-import "./game/judge.js";
-import "./game/render.js";
-import "./game/loop.js";
-import "./game/start.js";
+import "/projectbaguette/js/game/core.js";
+import "/projectbaguette/js/game/audio.js";
+import "/projectbaguette/js/game/notes.js";
+import "/projectbaguette/js/game/input.js";
+import "/projectbaguette/js/game/render.js";
+import "/projectbaguette/js/game/judge.js";
+import "/projectbaguette/js/game/particles.js";
+import "/projectbaguette/js/game/timing.js";
+import "/projectbaguette/js/game/loop.js";
+import "/projectbaguette/js/game/start.js";
