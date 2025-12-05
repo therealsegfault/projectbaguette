@@ -1,10 +1,13 @@
-import "/projectbaguette/js/game/core.js";
-import "/projectbaguette/js/game/audio.js";
-import "/projectbaguette/js/game/notes.js";
-import "/projectbaguette/js/game/input.js";
-import "/projectbaguette/js/game/render.js";
-import "/projectbaguette/js/game/judge.js";
-import "/projectbaguette/js/game/particles.js";
-import "/projectbaguette/js/game/timing.js";
-import "/projectbaguette/js/game/loop.js";
-import "/projectbaguette/js/game/start.js";
+export {};
+
+// Import submodules normally:
+import "./game/core.js";
+import "./game/audio.js";
+import "./game/timing.js";
+import "./game/notes.js";
+import "./game/input.js";
+import "./game/judge.js";
+import "./game/particles.js";
+import "./game/render.js";
+import "./game/loop.js";
+import "./game/start.js";
