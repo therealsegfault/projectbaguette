@@ -2,49 +2,59 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>PB Test</title>
-  <link rel="icon" href="./assets/favicon.png" type="image/png">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Project Baguette</title>
+
+  <!-- Comfortaa font -->
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;600;700&display=swap"
+  />
+
   <style>
     html, body {
       margin: 0;
       padding: 0;
       background: #000;
+      height: 100%;
       overflow: hidden;
-      touch-action: none;
+      font-family: "Comfortaa", sans-serif;
+      touch-action: manipulation;
     }
+    canvas {
+      display: block;
+    }
+    /* video hidden until start.js unlocks it */
     #mv {
       position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
       object-fit: cover;
       z-index: -1;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1s ease;
     }
-    #game {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1;
-    }
+    #song, #mv { display: none; }
   </style>
 </head>
 
 <body>
 
- 
+  <!-- Default MV and Song (relative paths so they work everywhere) -->
+  <video id="mv" preload="auto" muted playsinline>
+    <source src="./assets/defaults/mv-default.mp4" type="video/mp4" />
+  </video>
 
-  <!-- TEST SHIT -->
-<video id="mv" preload="auto" muted playsinline></video>
-<audio id="song" preload="auto"></audio>
+  <audio id="song" preload="auto">
+    <source src="./assets/defaults/song-demo.mp3" type="audio/mpeg" />
+  </audio>
 
-
-  <!-- GAME CANVAS -->
+  <!-- Game Canvas -->
   <canvas id="game"></canvas>
 
-  <!-- ENGINE ENTRYPOINT -->
- <script type="module" src="./js/main.js"></script>
+  <!-- Engine Entry -->
+  <script type="module" src="./js/main.js"></script>
 
 </body>
 </html>
