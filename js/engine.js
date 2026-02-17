@@ -242,10 +242,10 @@ async function ensureAudioContext() {
 
 // ─── DIFFICULTY PRESETS ───────────────────────────────────────────
 const DIFFS = {
-  Easy:    { approach: 3.2, windows: { perfect:.11,  good:.25, safe:.34, sad:.42, miss:.50 } },
-  Normal:  { approach: 2.8, windows: { perfect:.08,  good:.18, safe:.26, sad:.33, miss:.40 } },
-  Hard:    { approach: 2.4, windows: { perfect:.065, good:.15, safe:.22, sad:.28, miss:.34 } },
-  Extreme: { approach: 2.0, windows: { perfect:.055, good:.13, safe:.19, sad:.25, miss:.30 } },
+  Easy:    { approach: 2.0, windows: { perfect:.11, good:.25, safe:.34, sad:.42, miss:.50 } },
+  Normal:  { approach: 1.6, windows: { perfect:.08, good:.18, safe:.26, sad:.33, miss:.40 } },
+  Hard:    { approach: 1.3, windows: { perfect:.065, good:.15, safe:.22, sad:.28, miss:.34 } },
+  Extreme: { approach: 1.1, windows: { perfect:.055, good:.13, safe:.19, sad:.25, miss:.30 } },
 };
 let DIFF = 'Normal';
 function D()       { return DIFFS[DIFF] || DIFFS.Normal; }
@@ -498,14 +498,48 @@ async function buildAutoChart() {
     if (beats.length < 8) throw new Error('too few beats');
     tmp.close();
 
-    for (let bi = 0; bi < beats.length; bi++) {
-      const t    = beats[bi];
-      const lane = bi % NUM_LANES;
-      chartNotes.push({ time: t, lane });
-      if (bi % 8 === 0 && bi > 0) {
-        chartNotes.push({ time: t + 0.018, lane: (lane + 2) % NUM_LANES });
-      }
-    }
+     // --- BPM ESTIMATION + GRID SNAP ---
+function estimateBPM(beats) {
+  if (beats.length < 6) return 120;
+  const intervals = [];
+  for (let i = 1; i < beats.length; i++) {
+    intervals.push(beats[i] - beats[i - 1]);
+  }
+  intervals.sort((a, b) => a - b);
+  const median = intervals[Math.floor(intervals.length / 2)];
+  let bpm = 60 / median;
+
+  // Normalize into common BPM range
+  while (bpm < 80) bpm *= 2;
+  while (bpm > 220) bpm /= 2;
+  return bpm;
+}
+
+const estBpm = estimateBPM(beats);
+const beatDur = 60 / estBpm;
+
+// Snap beats to nearest grid
+for (let i = 0; i < beats.length; i++) {
+  beats[i] = Math.round(beats[i] / beatDur) * beatDur;
+}
+
+console.log("[PB] Estimated BPM:", estBpm.toFixed(2));
+if (window.PB_MENU_STATE) window.PB_MENU_STATE.bpm = estBpm;
+for (let bi = 0; bi < beats.length; bi++) {
+  const t = beats[bi];
+
+  // simple structured lane pattern
+  const lane = (bi + Math.floor(bi / 4)) % NUM_LANES;
+  chartNotes.push({ time: t, lane });
+
+  // occasional doubles on offbeats
+  if (bi % 8 === 4) {
+    chartNotes.push({
+      time: t + beatDur * 0.25,
+      lane: (lane + 2) % NUM_LANES
+    });
+  }
+}
   } catch {
     // BPM-grid fallback using song BPM from menu state
     const bpm  = window.PB_MENU_STATE?.bpm || 120;
@@ -676,11 +710,10 @@ function drawHitLine() {
 function noteXAt(note, t) {
   const elapsed  = t - note.spawnTime;
   const progress = Math.max(0, Math.min(1, elapsed / note.approach));
-  // Ease in-out quad — more musical feel than linear
-  const eased = progress < 0.5
-    ? 2 * progress * progress
-    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-  return layout.spawnX + (layout.hitX - layout.spawnX) * eased;
+
+  // Rhythm games MUST use constant velocity.
+  // Easing breaks beat perception.
+  return layout.spawnX + (layout.hitX - layout.spawnX) * progress;
 }
 
 function drawNote(note, t) {
